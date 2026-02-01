@@ -107,7 +107,7 @@ async fn main() {
 async fn lookup_handler(
     State(_state): State<Arc<AppState>>,
     headers: HeaderMap,
-    Json(_req): Json<LookupRequest>,
+    Json(req): Json<LookupRequest>,
 ) -> Result<Json<LookupResponse>, StatusCode> {
     let request_id = headers
         .get("x-request-id")
@@ -116,18 +116,55 @@ async fn lookup_handler(
         .unwrap_or_else(|| Uuid::new_v4().to_string());
 
     let start = Instant::now();
-    let res = perform_lookup(None).await.map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    let raw_json = if let Some(ip) = req.ip {
+        // === РЕАЛЬНЫЙ LOOKUP ПО ЧУЖОМУ IP ===
+        lookup_external_ip(&ip).await?
+    } else {
+        // fallback: мой public IP
+        let res = perform_lookup(None)
+            .await
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        serde_json::to_value(res).unwrap()
+    };
+
     let latency = start.elapsed().as_millis();
 
-    info!("lookup ip={} latency={}ms request_id={}", res.ip, latency, request_id);
+    let ip = raw_json
+        .get("query")
+        .or_else(|| raw_json.get("ip"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    info!("lookup ip={} latency={}ms request_id={}", ip, latency, request_id);
 
     Ok(Json(LookupResponse {
-        ip: res.ip.to_string(),
-        raw: serde_json::to_value(res).unwrap(),
+        ip,
+        raw: raw_json,
         latency_ms: latency,
         request_id,
     }))
 }
+
+// --------- external lookup ---------
+
+async fn lookup_external_ip(ip: &str) -> Result<serde_json::Value, StatusCode> {
+    let url = format!("http://ip-api.com/json/{}?fields=66846719", ip);
+
+    let resp = reqwest::get(url)
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+
+    let json: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|_| StatusCode::BAD_GATEWAY)?;
+
+    Ok(json)
+}
+
+// --------- infra ---------
 
 #[utoipa::path(
     get,
