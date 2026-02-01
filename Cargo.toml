@@ -45,3 +45,9 @@ opt-level = 3
 [[example]]
 name = "blocking"
 required-features = ["blocking"]
+
+[workspace]
+members = [
+  ".",
+  "service"
+]

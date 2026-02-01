@@ -1,0 +1,26 @@
+[package]
+name = "ip-service"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# web
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+
+# swagger
+utoipa = "4"
+utoipa-swagger-ui = { version = "6", features = ["axum"] }
+
+# core
+public-ip-address = { path = ".." }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# http client (без openssl)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+
+# infra
+tracing = "0.1"
+tracing-subscriber = "0.3"
+uuid = { version = "1", features = ["v4"] }
